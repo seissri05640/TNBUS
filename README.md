@@ -21,6 +21,8 @@ All helper commands are defined at the repository root:
 | `make lint` | Run Ruff lint checks over the API code and tests |
 | `make test` | Execute the FastAPI test suite via pytest |
 | `make run` | Start the FastAPI development server with live reload |
+| `make db-upgrade` | Apply the latest Alembic migrations to the configured database |
+| `make db-seed` | Populate the database with representative sample data |
 | `make docker-build` | Build the API Docker image |
 | `make docker-run` | Run the previously built Docker image, exposing port 8000 |
 
@@ -53,3 +55,34 @@ services/
     Dockerfile     # production container image
     pyproject.toml # Poetry project + dependency metadata
 ```
+
+## Database schema & migrations
+
+The service now persists operational data in Postgres via SQLAlchemy models and Alembic
+migrations. The MVP entities support route lookup, telemetry history, and prediction
+retrieval queries:
+
+```
+Route ──< Bus ──< TelemetryRecord
+   \            \
+    \            `── Prediction >── TrafficSnapshot
+     `──────────────────────────────^
+```
+
+| Table | Purpose | Indexed / unique columns |
+| --- | --- | --- |
+| `routes` | Canonical definition of a bus route | `code` (unique) |
+| `buses` | Individual fleet vehicles + operational status | `fleet_number` (unique), `route_id` |
+| `telemetry_records` | Time-series GPS + ridership metrics per bus | (`bus_id`, `recorded_at`) composite index + unique constraint |
+| `traffic_snapshots` | External congestion + incident observations | `captured_at` |
+| `predictions` | ETA/headway forecasts derived from telemetry + traffic inputs | (`route_id`, `target_arrival`) index |
+
+### Running migrations & seeds
+1. Provision a Postgres database and update `services/api/.env` (copy from `.env.example`).
+2. Install dependencies: `make install`.
+3. Apply the schema: `make db-upgrade` (runs `alembic upgrade head`).
+4. Load representative fixtures: `make db-seed`.
+
+Alembic configuration lives under `services/api/alembic/` and the generated SQLAlchemy
+models live in `services/api/app/models/`.
+
