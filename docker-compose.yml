@@ -1,0 +1,116 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: traffic-postgres
+    environment:
+      POSTGRES_USER: traffic
+      POSTGRES_PASSWORD: traffic
+      POSTGRES_DB: traffic
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U traffic"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: traffic-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    container_name: traffic-api
+    environment:
+      API_DATABASE_URL: postgresql+asyncpg://traffic:traffic@postgres:5432/traffic
+      API_DEBUG: "false"
+      API_LOG_LEVEL: INFO
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  ingestion:
+    build:
+      context: services/ingestion
+      dockerfile: Dockerfile
+    container_name: traffic-ingestion
+    environment:
+      INGESTION_DATABASE_URL: postgresql+asyncpg://traffic:traffic@postgres:5432/traffic
+      INGESTION_REDIS_URL: redis://redis:6379/0
+      INGESTION_CELERY_BROKER_URL: redis://redis:6379/0
+      INGESTION_CELERY_RESULT_BACKEND: redis://redis:6379/0
+      INGESTION_TRAFFIC_API_URL: http://traffic-mock:8001/traffic
+      INGESTION_DEBUG: "false"
+      INGESTION_LOG_LEVEL: INFO
+    ports:
+      - "8002:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  ingestion-worker:
+    build:
+      context: services/ingestion
+      dockerfile: Dockerfile
+    container_name: traffic-ingestion-worker
+    command: celery -A celeryconfig.celery_app worker --loglevel=info
+    environment:
+      INGESTION_DATABASE_URL: postgresql+asyncpg://traffic:traffic@postgres:5432/traffic
+      INGESTION_REDIS_URL: redis://redis:6379/0
+      INGESTION_CELERY_BROKER_URL: redis://redis:6379/0
+      INGESTION_CELERY_RESULT_BACKEND: redis://redis:6379/0
+      INGESTION_TRAFFIC_API_URL: http://traffic-mock:8001/traffic
+      INGESTION_LOG_LEVEL: INFO
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  ingestion-beat:
+    build:
+      context: services/ingestion
+      dockerfile: Dockerfile
+    container_name: traffic-ingestion-beat
+    command: celery -A celeryconfig.celery_app beat --loglevel=info
+    environment:
+      INGESTION_REDIS_URL: redis://redis:6379/0
+      INGESTION_CELERY_BROKER_URL: redis://redis:6379/0
+      INGESTION_CELERY_RESULT_BACKEND: redis://redis:6379/0
+      INGESTION_TRAFFIC_API_URL: http://traffic-mock:8001/traffic
+      INGESTION_LOG_LEVEL: INFO
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  traffic-mock:
+    build:
+      context: services/ingestion
+      dockerfile: Dockerfile
+    container_name: traffic-mock-api
+    command: python simulators/traffic_api_mock.py --host 0.0.0.0 --port 8001
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
