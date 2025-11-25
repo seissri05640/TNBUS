@@ -19,6 +19,14 @@ test:
 run:
 	cd $(API_DIR) && $(POETRY) run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
+.PHONY: db-upgrade
+db-upgrade:
+	cd $(API_DIR) && $(POETRY) run alembic upgrade head
+
+.PHONY: db-seed
+db-seed:
+	cd $(API_DIR) && $(POETRY) run python scripts/seed_data.py
+
 .PHONY: docker-build
 docker-build:
 	docker build -f $(API_DIR)/Dockerfile -t $(IMAGE_NAME) .

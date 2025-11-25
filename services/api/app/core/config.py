@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     debug: bool = Field(default=False, description="Enables FastAPI debug mode")
     version: str = Field(default="0.1.0", description="Semantic API version string")
     log_level: str = Field(default="INFO", description="Root logger level")
+    database_url: str = Field(
+        default="postgresql+asyncpg://traffic:traffic@localhost:5432/traffic",
+        description="SQLAlchemy connection string for the primary database",
+    )
 
     model_config = SettingsConfigDict(
         env_prefix="API_",
