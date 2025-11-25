@@ -23,3 +23,11 @@ pytest.debug.log
 .vscode/
 .DS_Store
 services/api/.venv/
+services/ingestion/.venv/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Redis dump
+dump.rdb
